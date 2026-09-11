@@ -6,148 +6,109 @@ import useEvent from "../hooks/useEvent";
 import GameOverlay from "./GameOverlay";
 import { countryFlag, getCountries } from "../data/countries";
 
-const directions = { ArrowLeft: 0, ArrowUp: 1, ArrowRight: 2, ArrowDown: 3 };
+const directions = { ArrowLeft: 0, a: 0, A: 0, ArrowUp: 1, w: 1, W: 1, ArrowRight: 2, d: 2, D: 2, ArrowDown: 3, s: 3, S: 3 };
 const getPlayerId = () => {
   let id = localStorage.getItem("playerId");
-  if (!id) {
-    id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
-    localStorage.setItem("playerId", id);
-  }
+  if (!id) { id = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`; localStorage.setItem("playerId", id); }
   return id;
 };
+const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
-const BoardView = ({ highestScore, setHighestScore }) => {
+const BoardView = ({ highestScore, setHighestScore, navigate }) => {
   const [board, setBoard] = useState(() => new Board());
-  const [leaderboard, setLeaderboard] = useState([]);
   const [name, setName] = useState(() => localStorage.getItem("playerName") || "");
   const [country, setCountry] = useState(() => localStorage.getItem("playerCountry") || "");
-  const [showScores, setShowScores] = useState(false);
-  const [showProfile, setShowProfile] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(() => !localStorage.getItem("playerName") || !localStorage.getItem("playerCountry"));
   const [transferCode, setTransferCode] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [elapsed, setElapsed] = useState(0);
+  const [startedAt, setStartedAt] = useState(null);
   const touchStart = useRef(null);
   const countries = useRef(getCountries()).current;
 
-  const loadLeaderboard = useCallback(async () => {
+  const saveScore = useCallback(async (score) => {
+    if (!name.trim() || !country) return false;
+    setSaveStatus("saving");
     try {
-      const response = await fetch("/api/leaderboard");
-      if (response.ok) setLeaderboard((await response.json()).scores || []);
-    } catch (_) {}
-  }, []);
+      const response = await fetch("/api/leaderboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId: getPlayerId(), name: name.trim(), country, score }) });
+      if (!response.ok) throw new Error();
+      setSaveStatus("saved");
+      return true;
+    } catch (_) { setSaveStatus("error"); return false; }
+  }, [name, country]);
 
-  useEffect(() => { loadLeaderboard(); }, [loadLeaderboard]);
   const restoreProfile = useCallback(async (code) => {
     const playerId = String(code || "").trim();
-    if (!/^[a-zA-Z0-9-]{8,64}$/.test(playerId)) { setProfileMessage("That transfer code is not valid."); return; }
-    setProfileMessage("Finding your profile…");
+    if (!/^[a-zA-Z0-9-]{8,64}$/.test(playerId)) { setProfileMessage("That code is not valid."); return; }
+    setProfileMessage("Restoring profile…");
     try {
       const response = await fetch(`/api/profile?id=${encodeURIComponent(playerId)}`);
       if (!response.ok) throw new Error();
       const { profile } = await response.json();
-      localStorage.setItem("playerId", playerId);
-      localStorage.setItem("playerName", profile.name);
-      localStorage.setItem("playerCountry", profile.country);
-      localStorage.setItem("highestScore", String(profile.score));
-      setName(profile.name); setCountry(profile.country); setHighestScore(profile.score);
-      setProfileMessage(`Welcome back, ${profile.name}.`);
-    } catch (_) { setProfileMessage("We couldn't find that profile."); }
+      localStorage.setItem("playerId", playerId); localStorage.setItem("playerName", profile.name); localStorage.setItem("playerCountry", profile.country); localStorage.setItem("highestScore", String(profile.score));
+      setName(profile.name); setCountry(profile.country); setHighestScore(profile.score); setProfileMessage("Profile restored.");
+    } catch (_) { setProfileMessage("Profile not found."); }
   }, [setHighestScore]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const transferred = params.get("profile");
-    if (transferred) {
-      setShowProfile(true);
-      setTransferCode(transferred);
-      restoreProfile(transferred);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+    const code = new URLSearchParams(window.location.search).get("profile");
+    if (code) { setProfileOpen(true); setTransferCode(code); restoreProfile(code); window.history.replaceState({}, "", "/"); }
   }, [restoreProfile]);
   useEffect(() => {
-    if (board.score > highestScore) {
-      setHighestScore(board.score);
-      localStorage.setItem("highestScore", String(board.score));
-    }
-  }, [board.score, highestScore, setHighestScore]);
+    if (!startedAt || board.hasLost()) return;
+    const tick = () => setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
+  }, [startedAt, board]);
+  useEffect(() => {
+    if (board.score > highestScore) { setHighestScore(board.score); localStorage.setItem("highestScore", String(board.score)); }
+    if (board.score < 4 || !name || !country) return;
+    const timer = window.setTimeout(() => saveScore(board.score), board.hasLost() ? 0 : 1200);
+    return () => window.clearTimeout(timer);
+  }, [board.score, board, highestScore, setHighestScore, name, country, saveScore]);
 
   const move = useCallback((direction) => {
+    if (profileOpen) return;
+    if (!startedAt) setStartedAt(Date.now());
     setBoard((current) => {
       if (current.hasWon() || current.hasLost()) return current;
       const clone = Object.assign(Object.create(Object.getPrototypeOf(current)), current);
       return clone.move(direction);
     });
-  }, []);
-
-  const handleKeyDown = useCallback((event) => {
-    if (directions[event.key] !== undefined) {
-      event.preventDefault();
-      move(directions[event.key]);
-    }
-  }, [move]);
+  }, [profileOpen, startedAt]);
+  const handleKeyDown = useCallback((event) => { if (directions[event.key] !== undefined) { event.preventDefault(); move(directions[event.key]); } }, [move]);
   useEvent("keydown", handleKeyDown);
 
-  const handleTouchStart = (event) => {
-    const touch = event.touches[0];
-    touchStart.current = { x: touch.clientX, y: touch.clientY };
-  };
-  const handleTouchEnd = (event) => {
-    if (!touchStart.current) return;
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - touchStart.current.x;
-    const dy = touch.clientY - touchStart.current.y;
-    touchStart.current = null;
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
-    move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 0) : (dy > 0 ? 3 : 1));
-  };
+  const handleTouchStart = (event) => { const touch = event.touches[0]; touchStart.current = { x: touch.clientX, y: touch.clientY }; };
+  const handleTouchEnd = (event) => { if (!touchStart.current) return; const touch = event.changedTouches[0]; const dx = touch.clientX - touchStart.current.x; const dy = touch.clientY - touchStart.current.y; touchStart.current = null; if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 2 : 0) : (dy > 0 ? 3 : 1)); };
 
-  const submitScore = async () => {
-    setShowScores(true);
+  const saveProfile = async () => {
     if (!name.trim() || !country) return;
-    setSubmitting(true);
-    localStorage.setItem("playerName", name.trim());
-    localStorage.setItem("playerCountry", country);
-    try {
-      const response = await fetch("/api/leaderboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId: getPlayerId(), name: name.trim(), country, score: board.score }) });
-      if (response.ok) await loadLeaderboard();
-    } finally { setSubmitting(false); }
+    localStorage.setItem("playerName", name.trim()); localStorage.setItem("playerCountry", country);
+    const saved = await saveScore(highestScore);
+    if (saved) { setProfileOpen(false); setProfileMessage(""); }
   };
-
   const copyProfile = async () => {
-    if (!localStorage.getItem("playerId")) { setProfileMessage("Save a score before transferring this profile."); return; }
-    const playerId = getPlayerId();
-    const link = `${window.location.origin}${window.location.pathname}?profile=${encodeURIComponent(playerId)}`;
-    try { await navigator.clipboard.writeText(link); setProfileMessage("Transfer link copied."); }
-    catch (_) { setTransferCode(playerId); setProfileMessage("Copy the code below."); }
+    const id = getPlayerId(); const link = `${window.location.origin}/?profile=${encodeURIComponent(id)}`;
+    try { await navigator.clipboard.writeText(link); setProfileMessage("Transfer link copied."); } catch (_) { setTransferCode(id); setProfileMessage("Copy the code below."); }
   };
-
-  const resetGame = () => setBoard(new Board());
-  const continueGame = () => setBoard((current) => {
-    const clone = Object.assign(Object.create(Object.getPrototypeOf(current)), current);
-    return clone.continueGame();
-  });
+  const resetGame = () => { setBoard(new Board()); setElapsed(0); setStartedAt(null); setSaveStatus("idle"); };
+  const continueGame = () => setBoard((current) => { const clone = Object.assign(Object.create(Object.getPrototypeOf(current)), current); return clone.continueGame(); });
 
   return (
-    <main className="game-shell">
-      <section className="game-column">
-        <header className="masthead"><div><p className="kicker">A small game of patience</p><h1>Twenty<br/>Forty-Eight</h1></div><p className="intro">Join equal tiles. Find a rhythm. Make room for one more move.</p></header>
-        <div className="game-meta"><button className="new-game" onClick={resetGame}>New game <span>↗</span></button><div className="scores" aria-label="Game scores"><div><span>Score</span><strong>{board.score.toLocaleString()}</strong></div><div><span>Personal best</span><strong>{highestScore.toLocaleString()}</strong></div></div></div>
+    <main className="arcade-shell">
+      <header className="game-header"><div className="brand"><span>2048</span><small>JOIN THE NUMBERS</small></div><div className="header-actions"><button onClick={() => navigate("/leaderboard")}>Leaderboard</button><button onClick={() => setProfileOpen(true)}>{country && countryFlag(country)} {name || "Profile"}</button></div></header>
+      <nav className="steps" aria-label="Game progress"><span className={!name || !country ? "active" : "done"}>01 Profile</span><span className={name && country && !board.hasLost() && !board.hasWon() ? "active" : ""}>02 Play</span><span className={board.hasLost() || board.hasWon() ? "active" : ""}>03 Result</span></nav>
+      <section className="game-stage">
+        <div className="hud"><button onClick={resetGame}>New game</button><div><span>Score<strong>{board.score.toLocaleString()}</strong></span><span>Best<strong>{highestScore.toLocaleString()}</strong></span><span>Time<strong>{formatTime(elapsed)}</strong></span></div></div>
         <div className="board" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} aria-label="2048 game board">
           {board.cells.map((row, rowIndex) => <div key={rowIndex}>{row.map((_, colIndex) => <Cell key={`${rowIndex}-${colIndex}`} />)}</div>)}
           {board.tiles.filter((tile) => tile.value !== 0).map((tile) => <Tile tile={tile} key={tile.id} />)}
-          <GameOverlay onRestart={resetGame} onContinue={continueGame} onSubmit={submitScore} board={board} submitting={submitting} />
+          <GameOverlay board={board} onRestart={resetGame} onContinue={continueGame} onLeaderboard={() => navigate("/leaderboard")} saveStatus={saveStatus} onRetry={() => saveScore(board.score)} />
         </div>
-        <div className="mobile-hint">Swipe to move · arrow keys on desktop</div>
+        <p className="controls-hint">Arrow keys / WASD · Swipe on mobile</p>
       </section>
-      <aside className="leaderboard">
-        <div className="leaderboard__head"><div><p className="kicker">The quiet competition</p><h2>Best runs</h2></div><button className="text-button" onClick={() => setShowScores(!showScores)}>{showScores ? "Close" : "View"}</button></div>
-        <div className={`leaderboard__body ${showScores ? "is-open" : ""}`}>
-          <ol>{leaderboard.length ? leaderboard.map((entry, index) => <li key={`${entry.name}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><b>{entry.country ? <i aria-label={entry.country}>{countryFlag(entry.country)}</i> : null}{entry.name}</b><strong>{entry.score.toLocaleString()}</strong></li>) : <li className="empty">No scores yet. The first mark is yours.</li>}</ol>
-          <div className="submit-score"><label htmlFor="player-name">Your profile</label><div className="profile-fields"><input id="player-name" maxLength="18" value={name} onChange={(event) => setName(event.target.value)} placeholder="Your name"/><select aria-label="Country" value={country} onChange={(event) => setCountry(event.target.value)}><option value="">Country</option>{countries.map((item) => <option value={item.code} key={item.code}>{item.flag} {item.name}</option>)}</select></div><button className="save-score" onClick={submitScore} disabled={!name.trim() || !country || board.score < 2 || submitting}>Save score · {board.score.toLocaleString()}</button><div className="profile-actions"><button className="quiet-button" onClick={() => setShowProfile(true)} disabled={!localStorage.getItem("playerId")}>Move profile to another browser</button></div><small>{localStorage.getItem("playerId") ? "Only your personal best is kept." : "Save your first score to enable profile transfer."}</small></div>
-        </div>
-        <footer><span>HOW TO PLAY</span><p>Use the arrow keys or swipe. Equal numbers merge; every move creates a new tile. Think ahead.</p><a href="https://github.com/Rami-0/2048" target="_blank" rel="noreferrer">View source on GitHub ↗</a></footer>
-      </aside>
-      {showProfile && <div className="profile-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-title" onMouseDown={(event) => event.target === event.currentTarget && setShowProfile(false)}><div className="profile-dialog__sheet"><button className="dialog-close" aria-label="Close profile transfer" onClick={() => setShowProfile(false)}>×</button><p className="kicker">One profile, every browser</p><h2 id="profile-title">Carry your best run with you.</h2><p>Copy a private transfer link on this browser, then open it on the other one. Your name, flag and best score will follow.</p><button className="copy-profile" onClick={copyProfile}>Copy transfer link</button><div className="transfer-divider"><span>or enter a transfer code</span></div><div className="transfer-input"><input value={transferCode} onChange={(event) => setTransferCode(event.target.value)} placeholder="Paste code here"/><button onClick={() => restoreProfile(transferCode)}>Restore</button></div>{profileMessage && <p className="profile-message" role="status">{profileMessage}</p>}<small>Anyone with this private link can use your profile. Share it carefully.</small></div></div>}
+      {profileOpen && <div className="profile-overlay"><section className="profile-card"><button className="close-profile" onClick={() => name && country && setProfileOpen(false)} aria-label="Close">×</button><span className="step-label">STEP 1 OF 3</span><h1>{localStorage.getItem("playerId") ? "Your profile" : "Create a profile"}</h1><p>Choose a name and country. Your best score saves automatically.</p><label>Name<input maxLength="18" value={name} onChange={(event) => setName(event.target.value)} placeholder="Player name" /></label><label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">Choose country</option>{countries.map((item) => <option key={item.code} value={item.code}>{item.flag} {item.name}</option>)}</select></label><button className="primary-action" onClick={saveProfile} disabled={!name.trim() || !country || saveStatus === "saving"}>{saveStatus === "saving" ? "Saving…" : "Save & play"}</button>{localStorage.getItem("playerId") && <button className="secondary-action" onClick={copyProfile}>Copy profile transfer link</button>}<div className="restore-row"><input value={transferCode} onChange={(event) => setTransferCode(event.target.value)} placeholder="Transfer code"/><button onClick={() => restoreProfile(transferCode)}>Restore</button></div>{profileMessage && <p className="profile-message">{profileMessage}</p>}</section></div>}
     </main>
   );
 };

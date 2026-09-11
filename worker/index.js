@@ -4,12 +4,12 @@ const json = (data, init = {}) => new Response(JSON.stringify(data), {
 });
 
 async function getScores(db) {
-  const { results } = await db.prepare("SELECT display_name AS name, country_code AS country, best_score AS score FROM leaderboard ORDER BY best_score DESC, updated_at ASC LIMIT 10").all();
+  const { results } = await db.prepare("SELECT display_name AS name, country_code AS country, best_score AS score FROM leaderboard WHERE best_score > 0 ORDER BY best_score DESC, updated_at ASC LIMIT 50").all();
   return results;
 }
 
 async function handleApi(request, env) {
-  if (request.method === "GET") return json({ scores: await getScores(env.DB) }, { headers: { "cache-control": "public, max-age=30, s-maxage=60" } });
+  if (request.method === "GET") return json({ scores: await getScores(env.DB) });
   if (request.method !== "POST") return json({ error: "Method not allowed" }, { status: 405, headers: { allow: "GET, POST" } });
 
   let body;
