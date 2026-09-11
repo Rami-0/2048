@@ -1,8 +1,8 @@
 @for $row from 0 through 3 {
   @for $column from 0 through 3 {
     .position_#{$row}_#{$column}:not(.isMoving) {
-      top: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$row});
-      left: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$column});
+      top: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$row});
+      left: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$column});
     }
   }
 }
@@ -11,13 +11,13 @@
   @for $toRow from 0 through 3 {
     $name: row_from_#{$fromRow}_to_#{$toRow};
     .#{$name} {
-      @if $fromRow == $toRow { top: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$toRow}); }
+      @if $fromRow == $toRow { top: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$toRow}); }
       @else { animation: #{$name} .16s ease-out forwards; }
     }
     @if $fromRow != $toRow {
       @keyframes #{$name} {
-        from { top: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$fromRow}); }
-        to { top: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$toRow}); }
+        from { top: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$fromRow}); }
+        to { top: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$toRow}); }
       }
     }
   }
@@ -27,13 +27,13 @@
   @for $toColumn from 0 through 3 {
     $name: column_from_#{$fromColumn}_to_#{$toColumn};
     .#{$name} {
-      @if $fromColumn == $toColumn { left: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$toColumn}); }
+      @if $fromColumn == $toColumn { left: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$toColumn}); }
       @else { animation: #{$name} .16s ease-out forwards; }
     }
     @if $fromColumn != $toColumn {
       @keyframes #{$name} {
-        from { left: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$fromColumn}); }
-        to { left: calc(var(--gap) * 1.5 + (var(--tile) + var(--gap)) * #{$toColumn}); }
+        from { left: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$fromColumn}); }
+        to { left: calc(var(--gap) + (var(--tile) + var(--gap)) * #{$toColumn}); }
       }
     }
   }

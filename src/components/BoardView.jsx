@@ -5,6 +5,7 @@ import { Board } from "../helper";
 import useEvent from "../hooks/useEvent";
 import GameOverlay from "./GameOverlay";
 import { countryFlag, getCountries } from "../data/countries";
+import CountrySearch from "./CountrySearch";
 
 const directions = { ArrowLeft: 0, a: 0, A: 0, ArrowUp: 1, w: 1, W: 1, ArrowRight: 2, d: 2, D: 2, ArrowDown: 3, s: 3, S: 3 };
 const getPlayerId = () => {
@@ -18,6 +19,7 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
   const [board, setBoard] = useState(() => new Board());
   const [name, setName] = useState(() => localStorage.getItem("playerName") || "");
   const [country, setCountry] = useState(() => localStorage.getItem("playerCountry") || "");
+  const [city, setCity] = useState(() => localStorage.getItem("playerCity") || "");
   const [profileOpen, setProfileOpen] = useState(() => !localStorage.getItem("playerName") || !localStorage.getItem("playerCountry"));
   const [transferCode, setTransferCode] = useState("");
   const [profileMessage, setProfileMessage] = useState("");
@@ -31,12 +33,12 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
     if (!name.trim() || !country) return false;
     setSaveStatus("saving");
     try {
-      const response = await fetch("/api/leaderboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId: getPlayerId(), name: name.trim(), country, score }) });
+      const response = await fetch("/api/leaderboard", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playerId: getPlayerId(), name: name.trim(), country, city: city.trim(), score }) });
       if (!response.ok) throw new Error();
       setSaveStatus("saved");
       return true;
     } catch (_) { setSaveStatus("error"); return false; }
-  }, [name, country]);
+  }, [name, country, city]);
 
   const restoreProfile = useCallback(async (code) => {
     const playerId = String(code || "").trim();
@@ -46,8 +48,8 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
       const response = await fetch(`/api/profile?id=${encodeURIComponent(playerId)}`);
       if (!response.ok) throw new Error();
       const { profile } = await response.json();
-      localStorage.setItem("playerId", playerId); localStorage.setItem("playerName", profile.name); localStorage.setItem("playerCountry", profile.country); localStorage.setItem("highestScore", String(profile.score));
-      setName(profile.name); setCountry(profile.country); setHighestScore(profile.score); setProfileMessage("Profile restored.");
+      localStorage.setItem("playerId", playerId); localStorage.setItem("playerName", profile.name); localStorage.setItem("playerCountry", profile.country); localStorage.setItem("playerCity", profile.city || ""); localStorage.setItem("highestScore", String(profile.score));
+      setName(profile.name); setCountry(profile.country); setCity(profile.city || ""); setHighestScore(profile.score); setProfileMessage("Profile restored.");
     } catch (_) { setProfileMessage("Profile not found."); }
   }, [setHighestScore]);
 
@@ -76,7 +78,11 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
       return clone.move(direction);
     });
   }, [profileOpen, startedAt]);
-  const handleKeyDown = useCallback((event) => { if (directions[event.key] !== undefined) { event.preventDefault(); move(directions[event.key]); } }, [move]);
+  const handleKeyDown = useCallback((event) => {
+    const target = event.target;
+    if (target instanceof HTMLElement && (target.matches("input, select, textarea") || target.isContentEditable)) return;
+    if (directions[event.key] !== undefined) { event.preventDefault(); move(directions[event.key]); }
+  }, [move]);
   useEvent("keydown", handleKeyDown);
 
   const handleTouchStart = (event) => { const touch = event.touches[0]; touchStart.current = { x: touch.clientX, y: touch.clientY }; };
@@ -84,7 +90,7 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
 
   const saveProfile = async () => {
     if (!name.trim() || !country) return;
-    localStorage.setItem("playerName", name.trim()); localStorage.setItem("playerCountry", country);
+    localStorage.setItem("playerName", name.trim()); localStorage.setItem("playerCountry", country); localStorage.setItem("playerCity", city.trim());
     const saved = await saveScore(highestScore);
     if (saved) { setProfileOpen(false); setProfileMessage(""); }
   };
@@ -108,7 +114,19 @@ const BoardView = ({ highestScore, setHighestScore, navigate }) => {
         </div>
         <p className="controls-hint">Arrow keys / WASD · Swipe on mobile</p>
       </section>
-      {profileOpen && <div className="profile-overlay"><section className="profile-card"><button className="close-profile" onClick={() => name && country && setProfileOpen(false)} aria-label="Close">×</button><span className="step-label">STEP 1 OF 3</span><h1>{localStorage.getItem("playerId") ? "Your profile" : "Create a profile"}</h1><p>Choose a name and country. Your best score saves automatically.</p><label>Name<input maxLength="18" value={name} onChange={(event) => setName(event.target.value)} placeholder="Player name" /></label><label>Country<select value={country} onChange={(event) => setCountry(event.target.value)}><option value="">Choose country</option>{countries.map((item) => <option key={item.code} value={item.code}>{item.flag} {item.name}</option>)}</select></label><button className="primary-action" onClick={saveProfile} disabled={!name.trim() || !country || saveStatus === "saving"}>{saveStatus === "saving" ? "Saving…" : "Save & play"}</button>{localStorage.getItem("playerId") && <button className="secondary-action" onClick={copyProfile}>Copy profile transfer link</button>}<div className="restore-row"><input value={transferCode} onChange={(event) => setTransferCode(event.target.value)} placeholder="Transfer code"/><button onClick={() => restoreProfile(transferCode)}>Restore</button></div>{profileMessage && <p className="profile-message">{profileMessage}</p>}</section></div>}
+      {profileOpen && <div className="profile-overlay"><section className="profile-card">
+        <button className="close-profile" onClick={() => localStorage.getItem("playerName") && setProfileOpen(false)} aria-label="Close">×</button>
+        <span className="step-label">STEP 1 OF 3</span>
+        <h1>{localStorage.getItem("playerId") ? "Your profile" : "Create a profile"}</h1>
+        <p>Choose a name and place. Your best score saves automatically.</p>
+        <label>Name<input maxLength="18" value={name} onChange={(event) => setName(event.target.value)} placeholder="Player name" /></label>
+        <label>Country<CountrySearch countries={countries} value={country} onChange={setCountry} /></label>
+        <label>City <small>optional</small><input maxLength="40" value={city} onChange={(event) => setCity(event.target.value)} placeholder="Type your city" /></label>
+        <button className="primary-action" onClick={saveProfile} disabled={!name.trim() || !country || saveStatus === "saving"}>{saveStatus === "saving" ? "Saving…" : "Save & play"}</button>
+        {localStorage.getItem("playerId") && <button className="secondary-action" onClick={copyProfile}>Copy profile transfer link</button>}
+        <div className="restore-row"><input value={transferCode} onChange={(event) => setTransferCode(event.target.value)} placeholder="Transfer code"/><button onClick={() => restoreProfile(transferCode)}>Restore</button></div>
+        {profileMessage && <p className="profile-message">{profileMessage}</p>}
+      </section></div>}
     </main>
   );
 };

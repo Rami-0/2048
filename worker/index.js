@@ -4,7 +4,7 @@ const json = (data, init = {}) => new Response(JSON.stringify(data), {
 });
 
 async function getScores(db) {
-  const { results } = await db.prepare("SELECT display_name AS name, country_code AS country, best_score AS score FROM leaderboard WHERE best_score > 0 ORDER BY best_score DESC, updated_at ASC LIMIT 50").all();
+  const { results } = await db.prepare("SELECT display_name AS name, country_code AS country, city, best_score AS score FROM leaderboard WHERE best_score > 0 ORDER BY best_score DESC, updated_at ASC LIMIT 50").all();
   return results;
 }
 
@@ -17,19 +17,21 @@ async function handleApi(request, env) {
   const playerId = String(body.playerId || "").trim();
   const name = String(body.name || "").trim().replace(/\s+/g, " ");
   const country = String(body.country || "").trim().toUpperCase();
+  const city = String(body.city || "").trim().replace(/\s+/g, " ");
   const score = Number(body.score);
-  if (!/^[a-zA-Z0-9-]{8,64}$/.test(playerId) || name.length < 1 || name.length > 18 || !/^(?!IL$)[A-Z]{2}$/.test(country) || !Number.isSafeInteger(score) || score < 0 || score > 999999999) {
+  if (!/^[a-zA-Z0-9-]{8,64}$/.test(playerId) || name.length < 1 || name.length > 18 || !/^(?!IL$)[A-Z]{2}$/.test(country) || city.length > 40 || !Number.isSafeInteger(score) || score < 0 || score > 999999999) {
     return json({ error: "Invalid score entry" }, { status: 400 });
   }
 
-  await env.DB.prepare(`INSERT INTO leaderboard (player_id, display_name, country_code, best_score, updated_at)
-    VALUES (?, ?, ?, ?, unixepoch())
+  await env.DB.prepare(`INSERT INTO leaderboard (player_id, display_name, country_code, city, best_score, updated_at)
+    VALUES (?, ?, ?, ?, ?, unixepoch())
     ON CONFLICT(player_id) DO UPDATE SET
       display_name = excluded.display_name,
       country_code = excluded.country_code,
+      city = excluded.city,
       best_score = MAX(leaderboard.best_score, excluded.best_score),
       updated_at = CASE WHEN excluded.best_score >= leaderboard.best_score THEN unixepoch() ELSE leaderboard.updated_at END`)
-    .bind(playerId, name, country, score).run();
+    .bind(playerId, name, country, city, score).run();
   return json({ ok: true, scores: await getScores(env.DB) });
 }
 
@@ -43,7 +45,7 @@ export default {
     if (url.pathname === "/api/profile" && request.method === "GET") {
       const playerId = url.searchParams.get("id") || "";
       if (!/^[a-zA-Z0-9-]{8,64}$/.test(playerId)) return json({ error: "Invalid profile" }, { status: 400 });
-      const profile = await env.DB.prepare("SELECT display_name AS name, country_code AS country, best_score AS score FROM leaderboard WHERE player_id = ?").bind(playerId).first();
+      const profile = await env.DB.prepare("SELECT display_name AS name, country_code AS country, city, best_score AS score FROM leaderboard WHERE player_id = ?").bind(playerId).first();
       return profile ? json({ profile }) : json({ error: "Profile not found" }, { status: 404 });
     }
     return env.ASSETS.fetch(request);
