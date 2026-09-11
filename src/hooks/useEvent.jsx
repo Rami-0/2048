@@ -7,5 +7,5 @@ export default function useEvent(event, handler, passive = false){
     return function cleanUp(){
       window.removeEventListener(event,handler,passive)
     }
-  })
+  }, [event, handler, passive])
 }

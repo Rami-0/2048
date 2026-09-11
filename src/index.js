@@ -1,11 +1,11 @@
-import React, {useState , useEffect} from "react";
+import React, {useState} from "react";
 import * as ReactDOMClient from 'react-dom/client';
 import BoardView from "./components/BoardView";
 import "./main.scss"
 import "./styles.scss"
 
 const App = () => {
-	const [highestScore, setHighestScore] = useState(JSON.parse(localStorage.getItem("highestScore")))
+	const [highestScore, setHighestScore] = useState(() => Number(localStorage.getItem("highestScore")) || 0)
 	
 	return <BoardView highestScore={highestScore} setHighestScore={setHighestScore}/>;
 };

@@ -18,7 +18,7 @@ const Tile = ({ tile }) => {
 		classArray.push("isMoving");
 	}
 	let classes = classArray.join(" ");
-	return <span className={classes}></span>;
+	return <span className={classes} aria-label={`${tile.value} tile`}>{tile.value}</span>;
 };
 
 export default Tile;

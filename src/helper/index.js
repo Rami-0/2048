@@ -11,6 +11,8 @@ var rotateLeft = function (matrix) {
   return res;
 };
 
+let nextTileId = 1;
+
 class Tile {
   constructor(value, row, column) {
     this.value = value || 0;
@@ -20,7 +22,7 @@ class Tile {
     this.oldColumn = -1;
     this.markForDeletion = false;
     this.mergedInto = null;
-    this.id = this.id++ || 0;
+    this.id = nextTileId++;
   }
   moveTo(row, column) {
     this.oldRow = this.row;
@@ -74,6 +76,7 @@ class Board {
     this.addRandomTile();
     this.setPositions();
     this.won = false;
+    this.keepPlaying = false;
   }
   addTile(args) {
     var res = new Tile(args);
@@ -155,7 +158,11 @@ class Board {
     });
   }
   hasWon() {
-    return this.won;
+    return this.won && !this.keepPlaying;
+  }
+  continueGame() {
+    this.keepPlaying = true;
+    return this;
   }
   hasLost() {
     var canMove = false;

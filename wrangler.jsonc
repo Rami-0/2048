@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "twenty-forty-eight",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-11",
+  "assets": {
+    "directory": "./build",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "2048",
+      "database_id": "729222eb-c11b-4239-8280-38d2c627596b",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "triggers": { "crons": ["17 3 * * 1"] }
+}

@@ -10,6 +10,8 @@
 
 # production
 /build
+/.wrangler
+/.wrangler
 
 # misc
 .DS_Store
